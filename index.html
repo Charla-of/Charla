@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-I0JCfaMSF2fisBVX0gi3w0Na3sEOkWPu5CAAu1ijTac='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://dakhnqriwbzihlzhtfcb.supabase.co; connect-src https://dakhnqriwbzihlzhtfcb.supabase.co wss://dakhnqriwbzihlzhtfcb.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-QH8Pevt0InbjHS/78oEdL13L8YQTMjJQ2BWzlQN/e9k='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://dakhnqriwbzihlzhtfcb.supabase.co; connect-src https://dakhnqriwbzihlzhtfcb.supabase.co wss://dakhnqriwbzihlzhtfcb.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'" />
   <meta name="referrer" content="no-referrer" />
   <title>Charla — Mensajería simple y privada</title>
   <meta name="description" content="Charla: chatea en tiempo real con otras personas. Solo necesitas un nombre de usuario." />
@@ -278,6 +278,14 @@ label input:focus, #new-user:focus { border-color: var(--accent); box-shadow: 0 
   .container { padding: 0 16px; }
 }
 
+
+/* ojo de contraseña */
+.pass-wrap { position: relative; margin-top: 7px; }
+label .pass-wrap input { margin-top: 0; padding-right: 52px; }
+.eye-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 44px; height: 40px; border: 0; border-radius: 9px; background: none; color: var(--muted); display: grid; place-items: center; touch-action: manipulation; }
+.eye-btn:hover, .eye-btn:focus-visible { color: var(--text); background: rgba(255,255,255,.06); outline: none; }
+.eye-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+input::-ms-reveal, input::-ms-clear { display: none; }
 </style>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2310b981'/%3E%3Cpath d='M9 11h14M9 16h10M9 21h6' stroke='white' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E" />
 </head>
@@ -377,7 +385,10 @@ label input:focus, #new-user:focus { border-color: var(--accent); box-shadow: 0 
           <input id="auth-user" name="username" autocomplete="username" maxlength="60" placeholder="ej. Juan Pérez 😎" required />
         </label>
         <label>Contraseña
-          <input id="auth-pass" name="password" type="password" maxlength="72" placeholder="Tu contraseña" required />
+          <div class="pass-wrap">
+            <input id="auth-pass" name="password" type="password" placeholder="Tu contraseña" autocapitalize="off" autocorrect="off" spellcheck="false" required />
+            <button type="button" class="eye-btn" id="toggle-pass" aria-label="Mostrar contraseña" title="Mostrar contraseña"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
         </label>
         <p class="form-error" id="auth-error" role="alert"></p>
         <button class="btn btn-primary btn-block" id="auth-submit" type="submit">Crear cuenta</button>
@@ -1294,6 +1305,29 @@ setInterval(() => { const chat = activeChat(); if (chat) updateStatus(chat); }, 
 
 $("year").textContent = new Date().getFullYear();
 route();
+
+// ---- ojo para ver la contraseña ----
+(() => {
+  const EYE = '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const EYE_OFF = '<svg viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.3"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+  const input = document.getElementById("auth-pass"), btn = document.getElementById("toggle-pass");
+  const set = (show) => {
+    input.type = show ? "text" : "password";
+    btn.innerHTML = show ? EYE_OFF : EYE;
+    const label = show ? "Ocultar contraseña" : "Mostrar contraseña";
+    btn.setAttribute("aria-label", label); btn.title = label;
+  };
+  btn.addEventListener("pointerdown", (e) => e.preventDefault()); // no quita el foco ni cierra el teclado
+  btn.addEventListener("click", () => {
+    const pos = input.selectionStart;
+    set(input.type === "password");
+    input.focus();
+    try { input.setSelectionRange(pos, pos); } catch {}
+  });
+  // al enviar o cambiar de pantalla, se vuelve a ocultar
+  document.getElementById("auth-form").addEventListener("submit", () => set(false), true);
+  window.addEventListener("hashchange", () => set(false));
+})();
 
   </script>
 </body>
