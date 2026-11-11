@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-JXF1zZYqXOpV8AQKF/EgGGCq1oBxjHKZFB0E3ghmFvQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://dakhnqriwbzihlzhtfcb.supabase.co; connect-src https://dakhnqriwbzihlzhtfcb.supabase.co wss://dakhnqriwbzihlzhtfcb.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Ca3dbgUKFh0LUMjZ7H3tw9U0N2IM1Bxfpl6UkwnmC+o='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://dakhnqriwbzihlzhtfcb.supabase.co; connect-src https://dakhnqriwbzihlzhtfcb.supabase.co wss://dakhnqriwbzihlzhtfcb.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'" />
   <meta name="referrer" content="no-referrer" />
   <title>Charla — Mensajería simple y privada</title>
   <meta name="description" content="Charla: chatea en tiempo real con otras personas. Solo necesitas un nombre de usuario." />
@@ -355,10 +355,10 @@ label input:focus, #new-user:focus { border-color: var(--accent); box-shadow: 0 
       <p class="muted" id="auth-sub">Elige un nombre de usuario y una contraseña.</p>
       <form id="auth-form" novalidate>
         <label>Nombre de usuario
-          <input id="auth-user" name="username" autocomplete="username" maxlength="20" placeholder="ej. juan_perez" required />
+          <input id="auth-user" name="username" autocomplete="username" maxlength="60" placeholder="ej. Juan Pérez 😎" required />
         </label>
         <label>Contraseña
-          <input id="auth-pass" name="password" type="password" maxlength="72" placeholder="Mínimo 10, con letras y números" required />
+          <input id="auth-pass" name="password" type="password" maxlength="72" placeholder="Tu contraseña" required />
         </label>
         <p class="form-error" id="auth-error" role="alert"></p>
         <button class="btn btn-primary btn-block" id="auth-submit" type="submit">Crear cuenta</button>
@@ -442,7 +442,7 @@ label input:focus, #new-user:focus { border-color: var(--accent); box-shadow: 0 
       <h3>Nuevo chat</h3>
       <p class="muted">Escribe el nombre de usuario de la persona.</p>
       <form id="new-form">
-        <input id="new-user" placeholder="usuario" autocomplete="off" maxlength="20" />
+        <input id="new-user" placeholder="usuario" autocomplete="off" maxlength="60" />
         <ul class="suggest" id="suggest"></ul>
         <p class="form-error" id="new-error"></p>
         <div class="modal-actions">
@@ -607,7 +607,26 @@ const E2E = (() => {
 // ================= Configuración de Supabase =================
 const SUPABASE_URL = "https://dakhnqriwbzihlzhtfcb.supabase.co";
 const SUPABASE_KEY = "sb_publishable_rRcNEvZ9n0IEJzTQcK90nQ_5lfwSDYs";
-const EMAIL_DOMAIN = "charla.local"; // los usuarios se guardan como usuario@charla.local
+// ================= Nombres de usuario =================
+// Se permite cualquier carácter visible (acentos, espacios, emojis…).
+// La "clave" normalizada es la que debe ser única: "Juan" = "JUAN" = "ｊｕａｎ".
+function normalizeName(raw) {
+  const display = String(raw).normalize("NFC").replace(/\s+/g, " ").trim();
+  const key = display.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+  return { display, key };
+}
+function nameError(display) {
+  const len = [...display].length;
+  if (len < 3 || len > 30) return "El nombre de usuario debe tener entre 3 y 30 caracteres.";
+  if (/[\p{C}\p{Zl}\p{Zp}]/u.test(display)) return "El nombre de usuario tiene caracteres invisibles no permitidos.";
+  return null;
+}
+// correo interno de Supabase: u_<hash del nombre>@charla.local (nunca se muestra)
+async function emailFor(key) {
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode("charla-user-v1:" + key)));
+  return "u_" + Array.from(h, (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40) + "@charla.local";
+}
+const firstChar = (s) => [...String(s || "?")][0];
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { storageKey: "charla-auth" },
@@ -618,7 +637,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const COLORS = ["#ef4444","#f97316","#eab308","#22c55e","#14b8a6","#0ea5e9","#6366f1","#a855f7","#ec4899"];
 const colorFor = (name) => COLORS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length];
-const setAvatar = (el, name) => { el.textContent = (name || "?")[0]; el.style.background = colorFor(name || "?"); };
+const setAvatar = (el, name) => { el.textContent = firstChar(name); el.style.background = colorFor(name || "?"); };
 const timeHM = (d) => new Date(d).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
 function shortDate(d) {
   const dt = new Date(d), now = new Date();
@@ -698,36 +717,40 @@ function showAuth(mode, notice) {
 
 $("auth-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const username = $("auth-user").value.trim().toLowerCase();
+  const { display, key } = normalizeName($("auth-user").value);
   const password = $("auth-pass").value;
   const err = $("auth-error"), btn = $("auth-submit");
   err.textContent = "";
 
-  if (!/^[a-z0-9_]{3,20}$/.test(username)) return (err.textContent = "Usuario: 3-20 caracteres (letras, números o _).");
-  if (!password) return (err.textContent = "Escribe tu contraseña.");
-  if (authMode === "signup") {
-    if (password.length < 10 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password))
-      return (err.textContent = "La contraseña debe tener al menos 10 caracteres, con letras y números.");
-    if (password.toLowerCase().includes(username)) return (err.textContent = "La contraseña no puede contener tu usuario.");
-  }
+  const badName = nameError(display);
+  if (badName) return (err.textContent = badName);
+  if (!password) return (err.textContent = "Escribe una contraseña.");
 
-  btn.disabled = true; const label = btn.textContent; btn.textContent = "Protegiendo tus llaves…";
+  const callSignup = async (body) => {
+    const { data, error } = await sb.functions.invoke("charla-signup", { body });
+    if (error) {
+      let msg = "No se pudo crear la cuenta.";
+      try { msg = (await error.context.json()).error || msg; } catch {}
+      throw new Error(msg);
+    }
+    return data;
+  };
+
+  btn.disabled = true; const label = btn.textContent; btn.textContent = "Un momento…";
   try {
-    const { auth, wrapKey } = await E2E.deriveFromPassword(username, password);
+    if (authMode === "signup") {
+      const check = await callSignup({ username: display, check: true });
+      if (!check?.available) throw new Error("Ese nombre de usuario ya está en uso. Intenta con otro.");
+    }
+    btn.textContent = "Protegiendo tus llaves…";
+    const { auth, wrapKey } = await E2E.deriveFromPassword(key, password);
     let identity = null;
     if (authMode === "signup") {
       identity = await E2E.createIdentity(wrapKey);
-      const { data, error } = await sb.functions.invoke("charla-signup", {
-        body: { username, auth, public_key: identity.public_key, enc_private_key: identity.enc_private_key, key_iv: identity.key_iv },
-      });
-      if (error) {
-        let msg = "No se pudo crear la cuenta.";
-        try { msg = (await error.context.json()).error || msg; } catch {}
-        throw new Error(msg);
-      }
+      const data = await callSignup({ username: display, auth, public_key: identity.public_key, enc_private_key: identity.enc_private_key, key_iv: identity.key_iv });
       if (!data?.ok) throw new Error(data?.error || "No se pudo crear la cuenta.");
     }
-    const { data: login, error } = await sb.auth.signInWithPassword({ email: `${username}@${EMAIL_DOMAIN}`, password: auth });
+    const { data: login, error } = await sb.auth.signInWithPassword({ email: await emailFor(key), password: auth });
     if (error) throw new Error(authMode === "login" ? "Usuario o contraseña incorrectos." : error.message);
 
     let privateKey = identity?.privateKey;
@@ -830,12 +853,12 @@ async function previewOf(chat, m) {
 function renderChats() {
   const q = $("chat-filter").value.trim().toLowerCase();
   const list = $("chat-list");
-  const items = state.chats.filter((c) => !q || c.other_username.includes(q));
+  const items = state.chats.filter((c) => !q || c.other_username.toLowerCase().includes(q));
   $("empty-list").classList.toggle("show", state.chats.length === 0);
   list.innerHTML = items.map((c) => {
     const unread = c.unread > 0 && c.conversation_id !== state.activeId;
     return `<li class="chat-item ${c.conversation_id === state.activeId ? "active" : ""} ${unread ? "unread" : ""}" data-id="${esc(c.conversation_id)}">
-      <div class="avatar" style="background:${colorFor(c.other_username)}">${esc(c.other_username[0])}</div>
+      <div class="avatar" style="background:${colorFor(c.other_username)}">${esc(firstChar(c.other_username))}</div>
       <div class="ci-main">
         <div class="ci-top"><b>${esc(c.other_username)}${c.keyChanged ? " ⚠️" : ""}</b><time>${shortDate(c.last_at)}</time></div>
         <div class="ci-bot"><span>${esc(c.preview)}</span>${unread ? `<i class="badge">${c.unread}</i>` : ""}</div>
@@ -1116,13 +1139,14 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") { $("modal
 let suggestTimer;
 $("new-user").addEventListener("input", () => {
   clearTimeout(suggestTimer);
-  const q = $("new-user").value.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
-  if (q.length < 2) return ($("suggest").innerHTML = "");
+  const q = normalizeName($("new-user").value).key;
+  if ([...q].length < 2) return ($("suggest").innerHTML = "");
   suggestTimer = setTimeout(async () => {
-    const { data } = await sb.from("charla_profiles").select("username").ilike("username", `${q}%`)
+    const pattern = q.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
+    const { data } = await sb.from("charla_profiles").select("username").like("username_key", pattern)
       .not("public_key", "is", null).neq("id", state.me.id).limit(6);
     $("suggest").innerHTML = (data || []).map((u) =>
-      `<li data-u="${esc(u.username)}"><div class="avatar" style="background:${colorFor(u.username)}">${esc(u.username[0])}</div>${esc(u.username)}</li>`).join("");
+      `<li data-u="${esc(u.username)}"><div class="avatar" style="background:${colorFor(u.username)}">${esc(firstChar(u.username))}</div>${esc(u.username)}</li>`).join("");
   }, 200);
 });
 $("suggest").addEventListener("click", (e) => {
@@ -1131,9 +1155,9 @@ $("suggest").addEventListener("click", (e) => {
 });
 $("new-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const username = $("new-user").value.trim().toLowerCase();
-  if (!username) return;
-  const { data, error } = await sb.rpc("charla_start_dm", { other_username: username });
+  const { key } = normalizeName($("new-user").value);
+  if (!key) return;
+  const { data, error } = await sb.rpc("charla_start_dm", { other_key: key });
   if (error) return ($("new-error").textContent = /no encontrado/i.test(error.message) ? "No existe ese usuario." : /contigo/i.test(error.message) ? "No puedes chatear contigo mismo." : /demasiados/i.test(error.message) ? "Demasiados chats nuevos, espera un rato." : "No se pudo abrir el chat.");
   $("modal-new").hidden = true;
   await loadChats();
