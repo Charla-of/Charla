@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-yvnO/ueW+m0BAb4AWkZ5Cn4D422nh87BX4IQX06+32I='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://dakhnqriwbzihlzhtfcb.supabase.co; connect-src https://dakhnqriwbzihlzhtfcb.supabase.co wss://dakhnqriwbzihlzhtfcb.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-36XbARXEtF/Nae5tplMGNLpl+CMFywd4uGuO5Uknrro='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://dakhnqriwbzihlzhtfcb.supabase.co; connect-src https://dakhnqriwbzihlzhtfcb.supabase.co wss://dakhnqriwbzihlzhtfcb.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'" />
   <meta name="referrer" content="no-referrer" />
   <title>Charla — Mensajería simple y privada</title>
   <meta name="description" content="Charla: chatea en tiempo real con otras personas. Solo necesitas un nombre de usuario." />
@@ -298,6 +298,16 @@ input::-ms-reveal, input::-ms-clear { display: none; }
 .lb-btn:hover, .lb-btn:focus-visible { background: rgba(255,255,255,.22); outline: none; }
 .lb-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .lightbox img { cursor: default; }
+
+/* fotos de perfil */
+.avatar.has-img { background-size: cover !important; background-position: center !important; background-repeat: no-repeat !important; color: transparent; }
+#me-avatar { cursor: pointer; position: relative; }
+#me-avatar::after { content: "✎"; position: absolute; right: -2px; bottom: -2px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-ink); font-size: 10px; display: grid; place-items: center; border: 2px solid var(--panel); }
+#chat-avatar.has-img { cursor: zoom-in; }
+.avatar-xl { width: 132px; height: 132px; font-size: 52px; margin: 10px auto 14px; }
+.profile-card { text-align: center; }
+.profile-actions { flex-wrap: wrap; justify-content: center; }
 </style>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2310b981'/%3E%3Cpath d='M9 11h14M9 16h10M9 21h6' stroke='white' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E" />
 </head>
@@ -495,6 +505,22 @@ input::-ms-reveal, input::-ms-clear { display: none; }
       <p class="pw-note">Pago seguro procesado por Mercado Pago. Cada pago te da 30 días de acceso.</p>
       <button class="pw-logout" id="pw-back" hidden>Volver al chat</button>
       <button class="pw-logout" id="pw-logout">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <!-- Modal foto de perfil -->
+  <div class="modal" id="modal-profile" hidden>
+    <div class="modal-card profile-card">
+      <h3>Tu foto de perfil</h3>
+      <p class="muted">Todos los usuarios de Charla podrán verla.</p>
+      <div class="avatar avatar-xl" id="profile-preview"></div>
+      <input type="file" id="avatar-input" accept="image/*" hidden />
+      <p class="form-error" id="profile-error"></p>
+      <div class="modal-actions profile-actions">
+        <button type="button" class="btn btn-ghost" id="avatar-remove">Quitar foto</button>
+        <button type="button" class="btn btn-ghost" id="profile-close">Cerrar</button>
+        <button type="button" class="btn btn-primary" id="avatar-change">Cambiar foto</button>
+      </div>
     </div>
   </div>
 
@@ -708,7 +734,20 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const COLORS = ["#ef4444","#f97316","#eab308","#22c55e","#14b8a6","#0ea5e9","#6366f1","#a855f7","#ec4899"];
 const colorFor = (name) => COLORS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length];
-const setAvatar = (el, name) => { el.textContent = firstChar(name); el.style.background = colorFor(name || "?"); };
+const AVATAR_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(webp|jpg)$/;
+const avatarUrl = (p) => (p && AVATAR_RE.test(p)) ? `${SUPABASE_URL}/storage/v1/object/public/charla-avatars/${p}` : null;
+const setAvatar = (el, name, path) => {
+  const u = avatarUrl(path);
+  el.textContent = u ? "" : firstChar(name);
+  el.style.background = colorFor(name || "?");
+  el.style.backgroundImage = u ? `url("${u}")` : "";
+  el.classList.toggle("has-img", !!u);
+  el.dataset.full = u || "";
+};
+const avatarHtml = (name, path) => {
+  const u = avatarUrl(path);
+  return `<div class="avatar${u ? " has-img" : ""}" style="background:${colorFor(name)}${u ? `;background-image:url('${u}')` : ""}">${u ? "" : esc(firstChar(name))}</div>`;
+};
 const timeHM = (d) => new Date(d).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
 function shortDate(d) {
   const dt = new Date(d), now = new Date();
@@ -847,14 +886,14 @@ let appStarted = false;
 async function startApp() {
   if (appStarted) return;
   const uid = state.session.user.id;
-  const { data: me, error } = await sb.from("charla_profiles").select("id, username, last_seen, public_key").eq("id", uid).maybeSingle();
+  const { data: me, error } = await sb.from("charla_profiles").select("id, username, last_seen, public_key, avatar_path").eq("id", uid).maybeSingle();
   if (error || !me || !me.public_key) { await forceLogout("Esta cuenta no tiene cifrado. Crea una cuenta nueva."); return; }
   const privateKey = await E2E.loadKey(uid);
   if (!privateKey) { await forceLogout("Por seguridad, escribe tu contraseña para desbloquear tus mensajes en este dispositivo."); return; }
   appStarted = true;
   state.me = me; state.privateKey = privateKey;
   $("me-name").textContent = me.username;
-  setAvatar($("me-avatar"), me.username);
+  setAvatar($("me-avatar"), me.username, me.avatar_path);
 
   touchLastSeen();
   state.heartbeat = setInterval(touchLastSeen, 60 * 1000);
@@ -1002,7 +1041,7 @@ function renderChats() {
   list.innerHTML = items.map((c) => {
     const unread = c.unread > 0 && c.conversation_id !== state.activeId;
     return `<li class="chat-item ${c.conversation_id === state.activeId ? "active" : ""} ${unread ? "unread" : ""}" data-id="${esc(c.conversation_id)}">
-      <div class="avatar" style="background:${colorFor(c.other_username)}">${esc(firstChar(c.other_username))}</div>
+      ${avatarHtml(c.other_username, c.other_avatar)}
       <div class="ci-main">
         <div class="ci-top"><b>${esc(c.other_username)}${c.keyChanged ? " ⚠️" : ""}</b><time>${shortDate(c.last_at)}</time></div>
         <div class="ci-bot"><span>${esc(c.preview)}</span>${unread ? `<i class="badge">${c.unread}</i>` : ""}</div>
@@ -1027,7 +1066,7 @@ async function openChat(id) {
   $("chat").hidden = false;
   $("view-app").classList.add("in-chat");
   $("chat-name").textContent = chat.other_username;
-  setAvatar($("chat-avatar"), chat.other_username);
+  setAvatar($("chat-avatar"), chat.other_username, chat.other_avatar);
   $("key-warning").hidden = !chat.keyChanged;
   updateStatus(chat);
 
@@ -1284,10 +1323,10 @@ $("new-user").addEventListener("input", () => {
   if ([...q].length < 2) return ($("suggest").innerHTML = "");
   suggestTimer = setTimeout(async () => {
     const pattern = q.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
-    const { data } = await sb.from("charla_profiles").select("username").like("username_key", pattern)
+    const { data } = await sb.from("charla_profiles").select("username, avatar_path").like("username_key", pattern)
       .not("public_key", "is", null).neq("id", state.me.id).limit(6);
     $("suggest").innerHTML = (data || []).map((u) =>
-      `<li data-u="${esc(u.username)}"><div class="avatar" style="background:${colorFor(u.username)}">${esc(firstChar(u.username))}</div>${esc(u.username)}</li>`).join("");
+      `<li data-u="${esc(u.username)}">${avatarHtml(u.username, u.avatar_path)}${esc(u.username)}</li>`).join("");
   }, 200);
 });
 $("suggest").addEventListener("click", (e) => {
@@ -1367,6 +1406,70 @@ route();
     if (e.target.closest("#lb-back, #lb-close") || e.target === lb) close();
   }, true);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+})();
+
+// ---- foto de perfil ----
+(() => {
+  const modal = $("modal-profile"), prev = $("profile-preview"), err = $("profile-error");
+  const refresh = () => { setAvatar(prev, state.me.username, state.me.avatar_path); $("avatar-remove").hidden = !state.me.avatar_path; };
+  $("me-avatar").title = "Cambiar foto de perfil";
+  $("me-avatar").addEventListener("click", () => { if (!state.me) return; err.textContent = ""; refresh(); modal.hidden = false; });
+  $("profile-close").addEventListener("click", () => (modal.hidden = true));
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.hidden = true; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") modal.hidden = true; });
+  $("avatar-change").addEventListener("click", () => $("avatar-input").click());
+
+  // recorta al centro en cuadrado, 512 px; al volver a dibujarla se borran los datos ocultos (GPS, etc.)
+  async function squarePhoto(file) {
+    if (!file.type.startsWith("image/")) throw new Error("Ese archivo no es una foto.");
+    let bmp;
+    try { bmp = await createImageBitmap(file); } catch { throw new Error("El archivo no es una imagen válida."); }
+    const s = Math.min(bmp.width, bmp.height), N = Math.min(512, s);
+    const c = document.createElement("canvas"); c.width = c.height = N;
+    c.getContext("2d").drawImage(bmp, (bmp.width - s) / 2, (bmp.height - s) / 2, s, s, 0, 0, N, N); bmp.close?.();
+    let blob = await new Promise((r) => c.toBlob(r, "image/webp", 0.88)), ext = "webp";
+    if (!blob || blob.type !== "image/webp") { blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.88)); ext = "jpg"; }
+    if (!blob) throw new Error("No se pudo procesar la foto.");
+    return { blob, ext };
+  }
+
+  $("avatar-input").addEventListener("change", async (e) => {
+    const file = e.target.files[0]; e.target.value = "";
+    if (!file) return;
+    const btn = $("avatar-change"); btn.disabled = true; btn.textContent = "Subiendo…"; err.textContent = "";
+    try {
+      const { blob, ext } = await squarePhoto(file);
+      const path = `${state.me.id}/${crypto.randomUUID()}.${ext}`;
+      const up = await sb.storage.from("charla-avatars").upload(path, blob,
+        { contentType: ext === "webp" ? "image/webp" : "image/jpeg", upsert: false, cacheControl: "3600" });
+      if (up.error) throw new Error("No se pudo subir la foto.");
+      const { error } = await sb.rpc("charla_set_avatar", { p_path: path });
+      if (error) { await sb.storage.from("charla-avatars").remove([path]); throw new Error("No se pudo guardar la foto."); }
+      const old = state.me.avatar_path;
+      state.me.avatar_path = path;
+      if (old) sb.storage.from("charla-avatars").remove([old]);
+      setAvatar($("me-avatar"), state.me.username, path); refresh();
+      toast("Foto de perfil actualizada");
+    } catch (ex) { err.textContent = ex.message; }
+    finally { btn.disabled = false; btn.textContent = "Cambiar foto"; }
+  });
+
+  $("avatar-remove").addEventListener("click", async () => {
+    const old = state.me.avatar_path; if (!old) return;
+    const { error } = await sb.rpc("charla_set_avatar", { p_path: null });
+    if (error) { err.textContent = "No se pudo quitar la foto."; return; }
+    state.me.avatar_path = null;
+    sb.storage.from("charla-avatars").remove([old]);
+    setAvatar($("me-avatar"), state.me.username, null); refresh();
+    toast("Foto de perfil quitada");
+  });
+
+  // tocar la foto del contacto en el chat la abre en grande
+  $("chat-avatar").addEventListener("click", () => {
+    const u = $("chat-avatar").dataset.full; if (!u) return;
+    $("lightbox-img").src = u; $("lightbox").hidden = false;
+    $("messages").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
 })();
 
   </script>
